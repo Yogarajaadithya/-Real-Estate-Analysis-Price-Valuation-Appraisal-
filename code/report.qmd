@@ -1,0 +1,216 @@
+---
+title: "Data Analytics - Zillow Housing Dataset"
+author: "Group"
+format: html
+editor: visual
+---
+
+## load libraries and Stratified Data Sample
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(leaflet)
+library(leaflet.extras)
+library(corrplot)
+library(ggcorrplot)
+
+options(scipen = 99)
+
+df <- read.csv('../zillow_data/stratified_properties_2016.csv')
+
+columns_to_factor <- c("airconditioningtypeid", "decktypeid", "fips", "hashottuborspa",
+                       "heatingorsystemtypeid","poolcnt", "pooltypeid10", "pooltypeid2",
+                       "propertylandusetypeid", "regionidzip", "fireplaceflag", "taxdelinquencyflag",
+                       "fireplacecnt", "garagecarcnt", "unitcnt", "yearbuilt_bin")
+
+df[columns_to_factor] <- lapply(df[columns_to_factor], as.factor)
+```
+
+## Data Summary
+
+```{r, results='asis'}
+#| column: screen-inset-shaded
+
+
+summarytools::dfSummary(df,
+                        plain.ascii  = FALSE, 
+                        style        = "grid", 
+                        graph.magnif = 0.75, 
+                        valid.col    = FALSE,
+                        tmp.img.dir  = "./tmp")
+```
+
+## Descriptive Statistics for Numeric Continuous features
+
+```{r, results='asis'}
+#| column: screen-inset-shaded
+
+
+summarytools::descr(df, transpose=TRUE)
+```
+
+## Correlation plot
+
+```{r}
+plotdf <- select_if(df, is.numeric)
+
+# Compute the correlation matrix
+cor_matrix <- cor(plotdf)
+
+ggcorrplot(cor_matrix, 
+              method = "square",   
+              type = "lower",      
+              colors = c("red", "white", "blue"),  
+              lab = TRUE,         
+              lab_size = 1,        
+              title = "Correlation Plot of Numeric Variables") 
+
+ggsave("corr_num.png", bg = "#FFFFFF")
+```
+
+```{r}
+
+# Compute the correlation matrix
+plotdf <- df %>%
+  select(c("yearbuilt_bin", "poolcnt", "hashottuborspa", "propertylandusetypeid"))
+plotdf <- model.matrix(~0+., data=plotdf) 
+
+plotdf %>% 
+  cor(use="pairwise.complete.obs") %>% 
+  ggcorrplot(show.diag=FALSE, type="lower", lab=TRUE, lab_size=1)
+
+ggsave("corr_cat.png", bg = "#FFFFFF")
+```
+
+## Visualize the properties by Year Built Era
+
+```{r}
+#| column: page
+#| height: 20
+
+
+plotdf <- df %>%
+  select(latitude, longitude, yearbuilt_bin)
+
+plotdf <- plotdf %>%
+  group_by(yearbuilt_bin) %>%
+  sample_frac(0.005) %>%  # Adjust 0.5 to the desired fraction (e.g., 0.5 for 50% sample)
+  ungroup()
+
+pal <- colorFactor(palette = c('red', 'orange', 'green', 'blue', 'violet'), domain = plotdf$yearbuilt_bin)
+
+# Create the leaflet map with both terrain and normal map layers, and add points with conditional color
+leaflet(data = plotdf) %>%
+  addTiles() %>%  
+  addProviderTiles("Esri.WorldImagery", options = providerTileOptions(opacity = 0.7)) %>%  
+  addCircleMarkers(
+    ~longitude, ~latitude,  
+    radius = 0.5,  
+    #color = ifelse(plotdf$airconditioningtypeid == 1, "cyan", "red"),
+    color = ~pal(yearbuilt_bin),  
+    fill = TRUE,  # Fill the circle
+    fillOpacity = 0.1  
+    #clusterOptions = markerClusterOptions()
+  ) %>%
+  addLegend(
+    position = "topright", 
+    pal = pal, 
+    values = ~yearbuilt_bin,      
+    title = "yearbuilt_bin",        
+    #colors = c("cyan", "red"),  
+    #labels = c("Yes", "No"), 
+    opacity = 1             
+  )
+```
+
+## Location of Expensive Properties (\> 5m)
+
+```{r}
+#| column: page
+#| height: 20
+
+
+# Plotting
+
+# Define the coordinates for each location along with the garage status
+plotdf <- df[df$taxvaluedollarcnt >= 5000000,] %>%
+  select(latitude, longitude)
+
+# Create the leaflet map with both terrain and normal map layers, and add points with conditional color
+leaflet(data = plotdf) %>%
+  addTiles() %>%  
+  addProviderTiles("Esri.WorldImagery", options = providerTileOptions(opacity = 0.7)) %>%  
+  addCircleMarkers(
+    ~longitude, ~latitude,  
+    radius = 0.5,  
+    color = "red",  
+    fill = TRUE,  # Fill the circle
+    fillOpacity = 0.1  
+    #clusterOptions = markerClusterOptions()
+  ) 
+```
+
+## Properties with / without Air Conditioning
+
+```{r}
+plotdf <- df %>%
+  select(latitude, longitude, airconditioningtypeid)
+
+plotdf <- plotdf %>%
+  group_by(airconditioningtypeid) %>%
+  sample_frac(0.05) %>%  # Adjust 0.5 to the desired fraction (e.g., 0.5 for 50% sample)
+  ungroup()
+
+# Create the leaflet map with both terrain and normal map layers, and add points with conditional color
+leaflet(data = plotdf) %>%
+  addTiles() %>%  
+  addProviderTiles("Esri.WorldImagery", options = providerTileOptions(opacity = 0.7)) %>%  
+  addCircleMarkers(
+    ~longitude, ~latitude,  
+    radius = 0.5,  
+    color = ifelse(plotdf$airconditioningtypeid == 1, "cyan", "red"),
+    fill = TRUE,  # Fill the circle
+    fillOpacity = 0.1  
+    #clusterOptions = markerClusterOptions()
+  ) %>%
+  addLegend(
+    position = "topright", 
+    title = "airconditioningtypeid",        
+    colors = c("cyan", "red"),  
+    labels = c("Yes", "No"), 
+    opacity = 1             
+  )
+```
+
+## Properties with / without Air Conditioning
+
+```{r}
+plotdf <- df %>%
+  select(latitude, longitude, airconditioningtypeid)
+
+plotdf <- plotdf %>%
+  group_by(airconditioningtypeid) %>%
+  sample_frac(0.05) %>%  # Adjust 0.5 to the desired fraction (e.g., 0.5 for 50% sample)
+  ungroup()
+
+# Create the leaflet map with both terrain and normal map layers, and add points with conditional color
+leaflet(data = plotdf) %>%
+  addTiles() %>%  
+  addProviderTiles("Esri.WorldImagery", options = providerTileOptions(opacity = 0.7)) %>%  
+  addCircleMarkers(
+    ~longitude, ~latitude,  
+    radius = 0.5,  
+    color = ifelse(plotdf$airconditioningtypeid == 1, "cyan", "red"),
+    fill = TRUE,  # Fill the circle
+    fillOpacity = 0.1  
+    #clusterOptions = markerClusterOptions()
+  ) %>%
+  addLegend(
+    position = "topright", 
+    title = "airconditioningtypeid",        
+    colors = c("cyan", "red"),  
+    labels = c("Yes", "No"), 
+    opacity = 1             
+  )
+```
